@@ -8,6 +8,7 @@ from EventKit import (
     EKRecurrenceDayOfWeek,  # type: ignore[import-untyped]
     EKRecurrenceEnd,  # type: ignore[import-untyped]
     EKRecurrenceRule,  # type: ignore[import-untyped]
+    EKReminder,  # type: ignore[import-untyped]
 )
 from pydantic import BaseModel, BeforeValidator, Field, model_validator
 
@@ -27,6 +28,13 @@ class Weekday(IntEnum):
     THURSDAY = 5
     FRIDAY = 6
     SATURDAY = 7
+
+
+class Priority(IntEnum):
+    NONE = 0
+    HIGH = 1
+    MEDIUM = 5
+    LOW = 9
 
 
 def convert_datetime(v):
@@ -223,4 +231,133 @@ class UpdateEventRequest(BaseModel):
     alarms_minutes_offsets: list[int] | None = None
     url: str | None = None
     all_day: bool | None = None
+    recurrence_rule: RecurrenceRule | None = None
+
+
+@dataclass
+class Reminder:
+    title: str
+    identifier: str
+    list_name: str | None = None
+    due_date: FlexibleDateTime | None = None
+    completion_date: FlexibleDateTime | None = None
+    notes: str | None = None
+    priority: Priority = Priority.NONE
+    url: str | None = None
+    is_completed: bool = False
+    alarms_minutes_offsets: list[int] | None = None
+    recurrence_rule: RecurrenceRule | None = None
+    creation_date: FlexibleDateTime | None = None
+    last_modified: FlexibleDateTime | None = None
+    _raw_reminder: EKReminder | None = None  # Store the original EKReminder object
+
+    @classmethod
+    def from_ekreminder(cls, ekreminder: EKReminder) -> "Reminder":
+        """Create a Reminder instance from an EKReminder."""
+        # Convert EKAlarms to our Alarm objects
+        alarms = []
+        if ekreminder.alarms():
+            for alarm in ekreminder.alarms():
+                offset_seconds = alarm.relativeOffset()
+                minutes = int(-offset_seconds / 60)  # Convert to minutes
+                alarms.append(minutes)
+
+        # Convert EKRecurrenceRule to our Recurrence object
+        # Note: EKReminder uses recurrenceRules (plural) which returns an array
+        recurrence = None
+        if hasattr(ekreminder, 'recurrenceRules') and ekreminder.recurrenceRules() and len(ekreminder.recurrenceRules()) > 0:
+            rule = ekreminder.recurrenceRules()[0]  # Take the first recurrence rule
+            days = None
+            if rule.daysOfTheWeek():
+                days = [Weekday(day.dayOfTheWeek()) for day in rule.daysOfTheWeek()]
+
+            recurrence = RecurrenceRule(
+                frequency=Frequency(rule.frequency()),
+                interval=rule.interval(),
+                days_of_week=days,
+                # Only set one of end_date or occurrence_count
+                end_date=rule.recurrenceEnd().endDate()
+                if rule.recurrenceEnd() and not rule.recurrenceEnd().occurrenceCount()
+                else None,
+                occurrence_count=rule.recurrenceEnd().occurrenceCount()
+                if rule.recurrenceEnd() and rule.recurrenceEnd().occurrenceCount()
+                else None,
+            )
+
+        # Convert due date components to datetime if present
+        due_date = None
+        if ekreminder.dueDateComponents():
+            from Foundation import NSCalendar
+            calendar = NSCalendar.currentCalendar()
+            due_date = calendar.dateFromComponents_(ekreminder.dueDateComponents())
+
+        return cls(
+            title=ekreminder.title(),
+            identifier=ekreminder.calendarItemIdentifier(),
+            list_name=ekreminder.calendar().title() if ekreminder.calendar() else None,
+            due_date=due_date,
+            completion_date=ekreminder.completionDate() if ekreminder.completionDate() else None,
+            notes=ekreminder.notes() if ekreminder.notes() else None,
+            priority=Priority(ekreminder.priority()) if ekreminder.priority() else Priority.NONE,
+            url=str(ekreminder.URL()) if ekreminder.URL() else None,
+            is_completed=ekreminder.isCompleted(),
+            alarms_minutes_offsets=alarms,
+            recurrence_rule=recurrence,
+            creation_date=ekreminder.creationDate() if ekreminder.creationDate() else None,
+            last_modified=ekreminder.lastModifiedDate() if ekreminder.lastModifiedDate() else None,
+            _raw_reminder=ekreminder,
+        )
+
+    def __str__(self) -> str:
+        """Return a human-readable string representation of the Reminder."""
+        alarms_list = ", ".join(map(str, self.alarms_minutes_offsets)) if self.alarms_minutes_offsets else "None"
+        
+        recurrence_info = "No recurrence"
+        if self.recurrence_rule:
+            recurrence_info = (
+                f"Recurrence: {self.recurrence_rule.frequency.name}, "
+                f"Interval: {self.recurrence_rule.interval}, "
+                f"End Date: {self.recurrence_rule.end_date or 'N/A'}, "
+                f"Occurrences: {self.recurrence_rule.occurrence_count or 'N/A'}"
+            )
+
+        status = "✅ Completed" if self.is_completed else "⏸️ Pending"
+        if self.completion_date and self.is_completed:
+            status += f" on {self.completion_date}"
+
+        return (
+            f"Reminder: {self.title},\n"
+            f" - Identifier: {self.identifier},\n"
+            f" - List: {self.list_name or 'N/A'},\n"
+            f" - Status: {status},\n"
+            f" - Due Date: {self.due_date or 'N/A'},\n"
+            f" - Priority: {self.priority.name},\n"
+            f" - Notes: {self.notes or 'N/A'},\n"
+            f" - Alarms (minutes before): {alarms_list},\n"
+            f" - URL: {self.url or 'N/A'},\n"
+            f" - Created: {self.creation_date or 'N/A'},\n"
+            f" - {recurrence_info}\n"
+        )
+
+
+class CreateReminderRequest(BaseModel):
+    title: str
+    list_name: str | None = None
+    due_date: datetime | None = None
+    notes: str | None = None
+    priority: Priority = Priority.NONE
+    url: str | None = None
+    alarms_minutes_offsets: list[int] | None = None
+    recurrence_rule: RecurrenceRule | None = None
+
+
+class UpdateReminderRequest(BaseModel):
+    title: str | None = None
+    list_name: str | None = None
+    due_date: datetime | None = None
+    notes: str | None = None
+    priority: Priority | None = None
+    url: str | None = None
+    is_completed: bool | None = None
+    alarms_minutes_offsets: list[int] | None = None
     recurrence_rule: RecurrenceRule | None = None
