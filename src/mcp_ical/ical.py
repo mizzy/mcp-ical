@@ -511,15 +511,21 @@ class CalendarManager:
 
         if new_reminder.due_date:
             from Foundation import NSCalendar, NSDateComponents
-            calendar = NSCalendar.currentCalendar()
-            components = calendar.components_fromDate_(
-                NSCalendar.NSYearCalendarUnit | 
-                NSCalendar.NSMonthCalendarUnit |
-                NSCalendar.NSDayCalendarUnit |
-                NSCalendar.NSHourCalendarUnit |
-                NSCalendar.NSMinuteCalendarUnit,
-                new_reminder.due_date
-            )
+            try:
+                # Try modern approach first (macOS 10.10+)
+                from Foundation import NSCalendarUnitYear, NSCalendarUnitMonth, NSCalendarUnitDay, NSCalendarUnitHour, NSCalendarUnitMinute
+                calendar = NSCalendar.currentCalendar()
+                components = calendar.components_fromDate_(
+                    NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay | NSCalendarUnitHour | NSCalendarUnitMinute,
+                    new_reminder.due_date
+                )
+            except ImportError:
+                # Fallback to older constants
+                calendar = NSCalendar.currentCalendar()
+                components = calendar.components_fromDate_(
+                    0x4 | 0x8 | 0x10 | 0x20 | 0x40,  # Year | Month | Day | Hour | Minute
+                    new_reminder.due_date
+                )
             ekreminder.setDueDateComponents_(components)
 
         if new_reminder.alarms_minutes_offsets:
@@ -594,15 +600,21 @@ class CalendarManager:
 
         if request.due_date is not None:
             from Foundation import NSCalendar, NSDateComponents
-            calendar = NSCalendar.currentCalendar()
-            components = calendar.components_fromDate_(
-                NSCalendar.NSYearCalendarUnit | 
-                NSCalendar.NSMonthCalendarUnit |
-                NSCalendar.NSDayCalendarUnit |
-                NSCalendar.NSHourCalendarUnit |
-                NSCalendar.NSMinuteCalendarUnit,
-                request.due_date
-            )
+            try:
+                # Try modern approach first (macOS 10.10+)
+                from Foundation import NSCalendarUnitYear, NSCalendarUnitMonth, NSCalendarUnitDay, NSCalendarUnitHour, NSCalendarUnitMinute
+                calendar = NSCalendar.currentCalendar()
+                components = calendar.components_fromDate_(
+                    NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay | NSCalendarUnitHour | NSCalendarUnitMinute,
+                    request.due_date
+                )
+            except ImportError:
+                # Fallback to older constants
+                calendar = NSCalendar.currentCalendar()
+                components = calendar.components_fromDate_(
+                    0x4 | 0x8 | 0x10 | 0x20 | 0x40,  # Year | Month | Day | Hour | Minute
+                    request.due_date
+                )
             existing_ek_reminder.setDueDateComponents_(components)
 
         # Update list if specified
