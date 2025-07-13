@@ -1,0 +1,95 @@
+# Claude Code Configuration
+# This file configures Claude's behavior for code review and assistance
+
+# Project-specific settings
+project:
+  name: "MCP iCal Server"
+  description: "Model Context Protocol server for macOS Calendar and Reminders"
+  language: "python"
+  framework: "mcp"
+  
+# Code review settings
+review:
+  # Focus areas for code review
+  focus_areas:
+    - "EventKit integration patterns"
+    - "MCP tool implementations" 
+    - "Error handling consistency"
+    - "Security considerations"
+    - "Performance optimization"
+    - "Code maintainability"
+    - "Documentation quality"
+  
+  # Coding standards to enforce
+  standards:
+    - "PEP 8 Python style guide"
+    - "Type hints for function signatures"
+    - "Comprehensive error handling"
+    - "Descriptive variable names"
+    - "Proper logging usage"
+    - "Security best practices"
+  
+  # Files to prioritize in reviews
+  priority_files:
+    - "src/mcp_ical/server.py"
+    - "src/mcp_ical/ical.py" 
+    - "src/mcp_ical/models.py"
+    - "tests/**/*.py"
+  
+  # Review depth settings
+  depth: "comprehensive"  # quick, standard, comprehensive
+  
+  # Auto-suggestions
+  suggest_improvements: true
+  suggest_refactoring: true
+  suggest_optimizations: true
+
+# Assistant settings  
+assistant:
+  # Response style
+  tone: "helpful"  # casual, professional, helpful, concise
+  
+  # Knowledge areas
+  expertise:
+    - "Python development"
+    - "macOS EventKit API"
+    - "PyObjC bridge"
+    - "Model Context Protocol"
+    - "Calendar/reminder systems"
+    - "Natural language processing"
+  
+  # Code examples preference
+  provide_examples: true
+  explain_reasoning: true
+  
+# Security settings
+security:
+  # Sensitive patterns to watch for
+  watch_patterns:
+    - "api_key"
+    - "secret"
+    - "password" 
+    - "token"
+    - "private_key"
+  
+  # Calendar/reminder specific security
+  calendar_security:
+    - "Proper permission handling"
+    - "Data access validation" 
+    - "User consent verification"
+    - "Sandbox compliance"
+
+# Performance monitoring
+performance:
+  # Areas to monitor
+  monitor:
+    - "EventKit query efficiency"
+    - "Memory usage patterns"
+    - "Calendar operation latency"
+    - "Bulk operation optimization"
+  
+  # Thresholds
+  thresholds:
+    max_function_length: 50
+    max_file_length: 500
+    complexity_limit: 10

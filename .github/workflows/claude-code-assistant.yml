@@ -1,0 +1,168 @@
+name: Claude Code Assistant
+
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  claude-assistant:
+    runs-on: ubuntu-latest
+    name: Claude Code Assistant
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install anthropic
+
+      - name: Claude Code Assistant
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 << 'EOF'
+          import os
+          import anthropic
+          import requests
+          import json
+          import re
+          from pathlib import Path
+          
+          # Initialize Anthropic client
+          client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+          
+          # Get the trigger event details
+          event_name = os.environ.get('GITHUB_EVENT_NAME')
+          
+          # Extract user question and context
+          if event_name == 'issue_comment':
+              comment_body = '''${{ github.event.comment.body }}'''
+              issue_number = '${{ github.event.issue.number }}'
+              comment_url = '${{ github.event.comment.html_url }}'
+              is_pr_comment = '${{ github.event.issue.pull_request }}' != ''
+          elif event_name == 'issues':
+              comment_body = '''${{ github.event.issue.body }}'''
+              issue_number = '${{ github.event.issue.number }}'
+              comment_url = '${{ github.event.issue.html_url }}'
+              is_pr_comment = False
+          elif event_name == 'pull_request_review_comment':
+              comment_body = '''${{ github.event.comment.body }}'''
+              issue_number = '${{ github.event.pull_request.number }}'
+              comment_url = '${{ github.event.comment.html_url }}'
+              is_pr_comment = True
+          else:
+              print("Unsupported event type")
+              exit(0)
+          
+          # Extract the question after @claude
+          claude_match = re.search(r'@claude\s+(.*)', comment_body, re.DOTALL)
+          if not claude_match:
+              print("No question found after @claude mention")
+              exit(0)
+          
+          user_question = claude_match.group(1).strip()
+          
+          # Project context
+          project_context = """
+          This is a Model Context Protocol (MCP) server that provides calendar and reminder management 
+          for macOS using EventKit and PyObjC. The server enables natural language interaction with 
+          macOS Calendar and Reminders apps through Claude Desktop or other MCP clients.
+          
+          Key technologies:
+          - Python 3.12+
+          - PyObjC for EventKit integration
+          - MCP (Model Context Protocol)
+          - FastMCP for server implementation
+          
+          Main functionality:
+          - Calendar event CRUD operations
+          - Reminder CRUD operations  
+          - Natural language date/time parsing
+          - Recurrence rules and alarms
+          - Multi-calendar support
+          
+          Key files:
+          - src/mcp_ical/server.py: MCP server with tools and resources
+          - src/mcp_ical/ical.py: CalendarManager with EventKit integration
+          - src/mcp_ical/models.py: Data models for events and reminders
+          """
+          
+          # Create assistant prompt
+          prompt = f"""You are a helpful code assistant for an MCP iCal server project. 
+          
+          Project Context:
+          {project_context}
+          
+          User Question: {user_question}
+          
+          Please provide a helpful, detailed response focusing on:
+          - Specific code examples when relevant
+          - EventKit/PyObjC patterns if applicable
+          - MCP server best practices
+          - Practical implementation guidance
+          - Security considerations for calendar access
+          
+          Keep your response concise but informative, suitable for a GitHub comment."""
+          
+          # Get Claude's response
+          try:
+              message = client.messages.create(
+                  model="claude-3-5-sonnet-20241022",
+                  max_tokens=2000,
+                  messages=[{"role": "user", "content": prompt}]
+              )
+              
+              assistant_response = message.content[0].text
+              
+              # Post response as comment
+              github_token = os.environ['GITHUB_TOKEN']
+              repo = os.environ['GITHUB_REPOSITORY']
+              
+              response_body = f"""## 🤖 Claude Assistant Response
+          
+          {assistant_response}
+          
+          ---
+          *This response was generated by Claude AI to help with your question.*"""
+              
+              if is_pr_comment:
+                  url = f"https://api.github.com/repos/{repo}/issues/{issue_number}/comments"
+              else:
+                  url = f"https://api.github.com/repos/{repo}/issues/{issue_number}/comments"
+              
+              headers = {
+                  'Authorization': f'token {github_token}',
+                  'Accept': 'application/vnd.github.v3+json'
+              }
+              
+              response = requests.post(url, headers=headers, json={'body': response_body})
+              
+              if response.status_code == 201:
+                  print("Assistant response posted successfully")
+              else:
+                  print(f"Failed to post response: {response.status_code}")
+                  print(response.text)
+                  
+          except Exception as e:
+              print(f"Error during assistant response: {e}")
+              exit(1)
+          EOF
