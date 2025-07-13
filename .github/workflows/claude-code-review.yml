@@ -3,63 +3,144 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  push:
-    branches: [main, master]
 
 permissions:
   contents: read
   pull-requests: write
-  checks: write
-  issues: write
 
 jobs:
   claude-review:
     runs-on: ubuntu-latest
     name: Claude Code Review
+    if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Claude Code Review
-        uses: anthropics/claude-code@v1
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v42
         with:
-          # Required: Anthropic API key
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          
-          # Optional: Customize the review behavior
-          review-type: 'comprehensive'  # 'quick', 'comprehensive', or 'security-focused'
-          
-          # Optional: File patterns to include/exclude
-          include-patterns: |
+          files: |
             src/**/*.py
             tests/**/*.py
             *.py
             *.md
             pyproject.toml
+
+      - name: Setup Python
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          pip install anthropic
+
+      - name: Claude Code Review
+        if: steps.changed-files.outputs.any_changed == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python3 << 'EOF'
+          import os
+          import anthropic
+          import requests
+          import json
+          from pathlib import Path
           
-          exclude-patterns: |
-            .venv/**
-            __pycache__/**
-            *.pyc
-            .pytest_cache/**
+          # Initialize Anthropic client
+          client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
           
-          # Optional: Custom instructions for Claude
-          custom-instructions: |
-            Please review this Python MCP (Model Context Protocol) server code with focus on:
-            - EventKit integration patterns and PyObjC usage
-            - MCP tool and resource definitions
-            - Error handling and logging consistency
-            - Security considerations for calendar/reminder access
-            - Code style and maintainability
-            - Performance implications of calendar operations
+          # Get changed files
+          changed_files = '''${{ steps.changed-files.outputs.all_changed_files }}'''.split()
           
-          # Optional: Set severity levels for different types of issues
-          fail-on-severity: 'error'  # 'info', 'warning', 'error', or 'critical'
+          # Read file contents and create review context
+          file_contents = {}
+          for file_path in changed_files:
+              if Path(file_path).exists():
+                  try:
+                      with open(file_path, 'r', encoding='utf-8') as f:
+                          content = f.read()
+                          if len(content) < 50000:  # Limit file size for API
+                              file_contents[file_path] = content
+                  except Exception as e:
+                      print(f"Could not read {file_path}: {e}")
           
-          # Optional: Enable automatic fixes for simple issues
-          auto-fix: false
+          if not file_contents:
+              print("No changed files to review")
+              exit(0)
           
-          # Optional: Comment on PR with review results
-          comment-on-pr: true
+          # Create review prompt
+          files_text = "\n\n".join([
+              f"### {path}\n```python\n{content}\n```" 
+              for path, content in file_contents.items()
+          ])
+          
+          prompt = f"""Please review this Python MCP (Model Context Protocol) server code with focus on:
+          
+          - EventKit integration patterns and PyObjC usage
+          - MCP tool and resource definitions  
+          - Error handling and logging consistency
+          - Security considerations for calendar/reminder access
+          - Code style and maintainability
+          - Performance implications of calendar operations
+          
+          Changed files to review:
+          {files_text}
+          
+          Please provide:
+          1. Overall assessment
+          2. Specific issues or improvements (if any)
+          3. Security considerations
+          4. Performance suggestions
+          5. Code quality observations
+          
+          Format your response as constructive feedback for a pull request review."""
+          
+          # Get Claude's review
+          try:
+              message = client.messages.create(
+                  model="claude-3-5-sonnet-20241022",
+                  max_tokens=4000,
+                  messages=[{"role": "user", "content": prompt}]
+              )
+              
+              review_content = message.content[0].text
+              
+              # Post review as PR comment
+              github_token = os.environ['GITHUB_TOKEN']
+              pr_number = os.environ['PR_NUMBER']
+              repo = os.environ['GITHUB_REPOSITORY']
+              
+              comment_body = f"""## 🤖 Claude Code Review
+          
+          {review_content}
+          
+          ---
+          *This review was generated by Claude AI. Please use your judgment when considering these suggestions.*"""
+              
+              url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
+              headers = {
+                  'Authorization': f'token {github_token}',
+                  'Accept': 'application/vnd.github.v3+json'
+              }
+              
+              response = requests.post(url, headers=headers, json={'body': comment_body})
+              
+              if response.status_code == 201:
+                  print("Review comment posted successfully")
+              else:
+                  print(f"Failed to post comment: {response.status_code}")
+                  print(response.text)
+                  
+          except Exception as e:
+              print(f"Error during review: {e}")
+              exit(1)
+          EOF

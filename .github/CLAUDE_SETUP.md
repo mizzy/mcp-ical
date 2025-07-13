@@ -1,12 +1,20 @@
-# Claude Code Action Setup Guide
+# Claude Code Integration Setup Guide
 
-This guide will help you complete the setup of Claude Code Actions for automated code review and assistance.
+This guide will help you complete the setup of Claude-powered code review and assistance workflows using the Anthropic API directly.
 
 ## 📋 Prerequisites
 
 1. **Anthropic API Access**: You need an Anthropic API key with Claude access
 2. **GitHub Repository**: Admin access to this repository
 3. **GitHub Actions**: Enabled for your repository (usually enabled by default)
+
+## ⚡ How It Works
+
+Instead of relying on a third-party GitHub Action, these workflows use:
+- **Direct Anthropic API calls** via Python script
+- **Claude 3.5 Sonnet** for intelligent code analysis  
+- **GitHub API integration** for posting comments and reviews
+- **Custom prompts** tailored for MCP and EventKit development
 
 ## 🔑 Step 1: Set Up Anthropic API Key
 
@@ -43,22 +51,24 @@ gh api repos/:owner/:repo --method PATCH --field has_actions=true
 The following workflows have been set up:
 
 ### 1. **Claude Code Review** (`.github/workflows/claude-code-review.yml`)
-- **Triggers**: Pull requests, pushes to main
-- **Purpose**: Automated code review with Claude
+- **Triggers**: Pull requests (opened, synchronized, reopened)
+- **Purpose**: Automated code review with Claude 3.5 Sonnet
 - **Features**: 
-  - Comprehensive Python code analysis
+  - Analyzes only changed Python/markdown files
   - MCP-specific pattern recognition
   - EventKit integration review
   - Security and performance checks
+  - Posts detailed review as PR comment
 
-### 2. **Claude Code Assistant** (`.github/workflows/claude-code-assistant.yml`)
+### 2. **Claude Code Assistant** (`.github/workflows/claude-code-assistant.yml`)  
 - **Triggers**: Issues, comments mentioning `@claude`
-- **Purpose**: Interactive code assistance
+- **Purpose**: Interactive code assistance on-demand
 - **Features**:
-  - Code explanation and documentation
-  - Bug analysis and troubleshooting
-  - Feature suggestions
-  - Refactoring recommendations
+  - Responds to `@claude <your question>` in issues/comments
+  - Code explanation and documentation help
+  - Bug analysis and troubleshooting guidance
+  - Feature suggestions and implementation advice
+  - MCP and EventKit specific expertise
 
 ## 📝 Step 4: Customize Configuration
 
