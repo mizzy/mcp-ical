@@ -1,0 +1,65 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  issues: write
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    name: Claude Code Review
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code@v1
+        with:
+          # Required: Anthropic API key
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          
+          # Optional: Customize the review behavior
+          review-type: 'comprehensive'  # 'quick', 'comprehensive', or 'security-focused'
+          
+          # Optional: File patterns to include/exclude
+          include-patterns: |
+            src/**/*.py
+            tests/**/*.py
+            *.py
+            *.md
+            pyproject.toml
+          
+          exclude-patterns: |
+            .venv/**
+            __pycache__/**
+            *.pyc
+            .pytest_cache/**
+          
+          # Optional: Custom instructions for Claude
+          custom-instructions: |
+            Please review this Python MCP (Model Context Protocol) server code with focus on:
+            - EventKit integration patterns and PyObjC usage
+            - MCP tool and resource definitions
+            - Error handling and logging consistency
+            - Security considerations for calendar/reminder access
+            - Code style and maintainability
+            - Performance implications of calendar operations
+          
+          # Optional: Set severity levels for different types of issues
+          fail-on-severity: 'error'  # 'info', 'warning', 'error', or 'critical'
+          
+          # Optional: Enable automatic fixes for simple issues
+          auto-fix: false
+          
+          # Optional: Comment on PR with review results
+          comment-on-pr: true
